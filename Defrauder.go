@@ -97,7 +97,7 @@ func alphabetMaker() {
 
 	writer := bufio.NewWriter(file)
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 100000; i++ {
 		char := rune(i)
 
 		if unicode.IsLetter(char) && unicode.Is(unicode.Latin, char) {
