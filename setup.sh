@@ -64,21 +64,22 @@ else
     echo -e "${GREEN}Git is already installed.${NC}"
 fi
 
-# Define the current directory using pwd
-CURRENT_DIR=$(pwd)
-
+# check if install dir is set from settings.env file, otherwise set it to the current dir
+if [ -z "${INSTALL_DIR}" ]; then
+    INSTALL_DIR=$(pwd)
+fi
 # Download and setup dnscan tool
-if [ ! -f "$CURRENT_DIR/Tools/dnscan/dnscan.py" ]; then
+if [ ! -f "${INSTALL_DIR}/Tools/dnscan/dnscan.py" ]; then
     echo -e "${GREEN}Downloading dnscan tool...${NC}"
 
     # Create Tools directory if it doesn't exist
-    mkdir -p "$CURRENT_DIR/Tools"
+    mkdir -p "${INSTALL_DIR}/Tools"
 
     # Clone dnscan repository to Tools directory
-    git clone https://github.com/rbsec/dnscan "$CURRENT_DIR/Tools/dnscan"
+    git clone https://github.com/rbsec/dnscan "${INSTALL_DIR}/Tools/dnscan"
 
     # Get the absolute path of dnscan.py
-    DN_SCAN_PATH="$CURRENT_DIR/Tools/dnscan/dnscan.py"
+    DN_SCAN_PATH="${INSTALL_DIR}/Tools/dnscan/dnscan.py"
 
     # Replace the old path in Defrauder.go with the new one
     sed -i "s|pwd_script = \".*\"|pwd_script = \"$DN_SCAN_PATH\"|" Defrauder.go
