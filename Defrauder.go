@@ -15,11 +15,18 @@ import (
 var wg sync.WaitGroup
 var limitChan chan struct{} 
 
+func initLimitChan(bufferSize int) {
+	
+	limitChan = make(chan struct{}, bufferSize)
+
+}
+
 func clearTerminal() {
-	// Execute the clear command directly
-	cmd := exec.Command("clear") //Linux example, its tested
+	
+	cmd := exec.Command("clear")
 	cmd.Stdout = os.Stdout
 	cmd.Run()
+
 }
 
 func banner() {
@@ -47,23 +54,37 @@ func displayHelp() {
     fmt.Println(" Defrauder.go -d example.com -o results.txt -t 40")
 }
 
-func initLimitChan(bufferSize int) {
-	// fmt.Printf("%d",bufferSize)
-	limitChan = make(chan struct{}, bufferSize)
-}
-
 func isDomainLive(domain string) {
+
     var wg sync.WaitGroup
+	
     wg.Add(1)
     defer wg.Done()
 
     var pwd_script string
-    pwd_script = "/home/../Desktop/Defrauder/Tools/dnscan/dnscan.py"
+    pwd_script = "/home/harsh/Defrauder/Tools/dnscan/dnscan.py"
     cmd := exec.Command("bash", "-c", fmt.Sprintf("python3 %s -d %s -n >> .tmp/on_domain.txt", pwd_script, domain))
     cmd.Run()
+
+}
+
+func CreateTemporaryDirectory() {
+
+	if err := os.MkdirAll(".tmp", os.ModePerm); err != nil {
+		fmt.Println("Error creating directory:", err)
+	}
+
+}
+
+func Rm_extra(){
+
+	cmd8 := exec.Command("bash", "-c", "rm -r .tmp")
+	cmd8.Run()
+
 }
 
 func alphabetMaker() {
+
 	cmd := exec.Command("bash", "-c", "mkdir -p .tmp")
 	cmd.Run()
 
@@ -76,7 +97,7 @@ func alphabetMaker() {
 
 	writer := bufio.NewWriter(file)
 
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 100; i++ {
 		char := rune(i)
 
 		if unicode.IsLetter(char) && unicode.Is(unicode.Latin, char) {
@@ -95,9 +116,11 @@ func alphabetMaker() {
 	cmd1 := exec.Command("bash", "-c", "sort -u .tmp/letters_output.txt -o .tmp/sorted_alp.txt")
 	cmd1.Run()
 	wg.Done() 
+
 }
 
 func request(domain string, idx int, wg *sync.WaitGroup) {
+
     defer wg.Done()
 
     fileName := ".tmp/sorted_alp.txt"
@@ -130,57 +153,30 @@ func request(domain string, idx int, wg *sync.WaitGroup) {
     writer := bufio.NewWriter(file)
     for _, char := range alphabetArr {
         newDomain := domain[:idx] + char + domain[idx+1:]
-        // fmt.Printf("%d : domain : %s\n", i, newDomain)
+        
 
         writer.WriteString(newDomain + "\n")
     }
-    writer.Flush() // Ensure all data is written to the file
+    writer.Flush() 
 
 }
 
 func splitDomain(domain string,base string, ext string) {
+
     var wg sync.WaitGroup
 
-    // fmt.Printf("%s : %s : %s \n",domain,base,ext)
-    domainLength := len(base) // Adjust to exclude the TLD part
-    // fmt.Printf("%d",domainLength)
+   
+    domainLength := len(base) 
+
     for i := 0; i < domainLength; i++ {
         wg.Add(1)
-        go request(domain, i, &wg) // Send domain and current index to request
+        go request(domain, i, &wg)
     }
 
-    wg.Wait() // Wait for all requests to complete
+    wg.Wait() 
     
 }
-func check_live(){
-    
-    var innerWg sync.WaitGroup
 
-    file, err := os.Open(".tmp/domain_list.txt")
-    if err != nil {
-        fmt.Printf("failed to open file: %s", err)
-    }
-    defer file.Close()
-
-    scanner := bufio.NewScanner(file)
-    for scanner.Scan() {
-        line := scanner.Text()
-        innerWg.Add(1)
-        go func(d string) {
-            defer innerWg.Done()
-            
-            limitChan <- struct{}{} // Acquire a spot
-            isDomainLive(d)
-            <-limitChan // Release the spot
-        }(line)
-        // fmt.Println(line)
-    }
-    innerWg.Wait() 
-
-    if err := scanner.Err(); err != nil {
-        fmt.Printf("error reading file: %s", err)
-    }
-}
 func GenerateVariations(baseWord string) []string {
 
 	variations := map[rune][]string{
@@ -205,6 +201,7 @@ func GenerateVariations(baseWord string) []string {
 		'u': {"u", "v", "ù"},
 		'y': {"y", "ÿ"},
 	}
+
 	var splitWord [][]string
 	for _, char := range baseWord {
 		if v, found := variations[char]; found {
@@ -228,7 +225,8 @@ func combine(chars [][]string, current string, results *[]string) {
 		combine(chars[1:], current+char, results)
 	}
 }
-func method2(SLD string, TLD string,stopChan chan struct{}) {
+
+func method2(SLD string, TLD string) {
     wordlist := GenerateVariations(SLD)
 
     outputFile := ".tmp/fake_domain_wordlist.txt"
@@ -243,67 +241,73 @@ func method2(SLD string, TLD string,stopChan chan struct{}) {
     for _, word := range wordlist {
         tmp := word + "." + TLD
         writer.WriteString(tmp + "\n")
-
-        // Increment the WaitGroup counter
-        wg.Add(1) // Correctly add before launching the goroutine
-        go func(d string) {
-            defer wg.Done() // Ensure this is called to prevent panic
-            limitChan <- struct{}{} // Acquire a spot in the channel
-            isDomainLive(d)         // Call the function to check if the domain is live
-            <-limitChan              // Release the spot
-        }(tmp)
     }
     writer.Flush()
-    wg.Wait()
-    close(stopChan)
-}
-func Rm_extra(){
-
-	cmd8 := exec.Command("bash", "-c", "rm -r .tmp")
-	cmd8.Run()
-
 }
 
-func CreateTemporaryDirectory() {
-	if err := os.MkdirAll(".tmp", os.ModePerm); err != nil {
-		fmt.Println("Error creating directory:", err)
-	}
+func check_live(stopChan chan struct{}){
+    
+		var innerWg sync.WaitGroup
+	
+		cmd:=exec.Command("bash","-c","cat .tmp/domain_list.txt .tmp/fake_domain_wordlist.txt > .tmp/combined.txt ")
+		cmd.Run()
+
+		file, err := os.Open(".tmp/combined.txt")
+		if err != nil {
+			fmt.Printf("failed to open file: %s", err)
+		}
+		defer file.Close()
+	
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			innerWg.Add(1)
+			go func(d string) {
+				defer innerWg.Done()
+				
+				limitChan <- struct{}{} // Acquire a spot
+				isDomainLive(d)
+				<-limitChan // Release the spot
+			}(line)
+
+		}
+		innerWg.Wait() 
+	
+		if err := scanner.Err(); err != nil {
+			fmt.Printf("error reading file: %s", err)
+		}
+		close(stopChan)
 }
-
-
 func showData(stopChan <-chan struct{}) {
-	// Run until the stop signal is received
+		
 	for {
 		select {
 		case <-stopChan:
 			fmt.Println("Stopping data display...")
 			return
 		default:
-			// Clear the terminal and display the banner
+			
 			clearTerminal()
 			banner()
-          
-            cmd0 := exec.Command("bash", "-c", `cat .tmp/on_domain.txt | sed 's/\x1b\[K//g' | grep -E "([0-9]{1,3}\.){3}[0-9]{1,3} - ([a-zA-Z0-9_-]+\.)+[a-zA-Z]{2,}" | sort -u -o .tmp/sorted_output_data.txt`)
+		  
+	        cmd0 := exec.Command("bash", "-c", `cat .tmp/on_domain.txt | sed 's/\x1b\[K//g' | grep -E "([0-9]{1,3}\.){3}[0-9]{1,3} - ([a-zA-Z0-9_-]+\.)+[a-zA-Z]{2,}" | sort -u -o .tmp/sorted_output_data.txt`)
 	        cmd0.Run()
-			// Simulate reading and displaying data from the file
+			
 			output, err := os.ReadFile(".tmp/sorted_output_data.txt")
 			if err != nil {
 				fmt.Println("Error reading file:", err)
 				return
 			}
-
-			// Convert output to a string and split by lines
+				
 			outputLines := strings.Split(string(output), "\n")
-
-			// Print the new data
+				
 			for _, line := range outputLines {
 				if line != "" {
 					fmt.Println(line)
 				}
 			}
-
-			// Sleep for a short time before the next update
-			time.Sleep(3 * time.Second)
+				
+			time.Sleep(5 * time.Second)
 		}
 	}
 }
@@ -313,15 +317,11 @@ func main() {
     var bufferSize int = 32 // default buffer size
     var mainWg sync.WaitGroup
     stopChan := make(chan struct{})
-    // Clear terminal and show banner
-    // clearTerminal()
-    // banner()
     
-    // Clean up and create temporary directory
     Rm_extra()
     CreateTemporaryDirectory()
     
-    // Parse command line arguments
+    
     flagString := os.Args[1:]
     if len(flagString) < 2 {
         fmt.Println("ENTER THE CORRECT COMMAND...")
@@ -358,16 +358,16 @@ func main() {
         }
     }
 
-    // Validate domain input
+    
     if domain == "" {
         fmt.Println("Error: Domain is required")
         displayHelp()
         return
     }
 
-    // Initialize channel for limiting concurrent operations
+    
     initLimitChan(bufferSize)
-    // Step 1: Generate alphabet
+    
     mainWg.Add(1)
     go func() {
         defer mainWg.Done()
@@ -396,17 +396,18 @@ func main() {
         if len(parts) == 2 {
             base := parts[0]
             ext := parts[1]
+
             // - MET 1 -
-            // Process domain using method2 directly (no goroutine)
-            // Call method2 directly and wait for it to complete
-            method2(base, ext,stopChan)
-            // - MET 2 -
             splitDomain(domain, base, ext)
-            check_live()
+            // - MET 2 -
+            method2(base, ext)
+            check_live(stopChan)
+
+
         } else {
             fmt.Println("Error: Invalid domain format. Domain must contain a TLD (e.g., example.com)")
             return
-    }
+    	}
 
     // Handle output file if specified
     if outputFileName != "" {
@@ -424,9 +425,5 @@ func main() {
         }
     }
 
-    // Final cleanup
-    Rm_extra()
-
     fmt.Println("\nDomain processing completed successfully!")
 }
-
