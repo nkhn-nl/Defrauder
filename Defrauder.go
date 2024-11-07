@@ -50,6 +50,7 @@ func displayHelp() {
     fmt.Println("  -d <domain>       Target domain to check for fakes.")
     fmt.Println("  -o <output_file>  Specify the output file for results.")
     fmt.Println("  -t <buffer_size>  Set the buffer size for concurrent checks (default is 32).")
+    fmt.Println("  -h                This help text.")
     fmt.Println("\nExample:")
     fmt.Println(" Defrauder.go -d example.com -o results.txt -t 40")
 }
@@ -62,7 +63,7 @@ func isDomainLive(domain string) {
     defer wg.Done()
 
     var pwd_script string
-    pwd_script = "/home/harsh/Defrauder/Tools/dnscan/dnscan.py"
+    pwd_script = "~/dev/Defrauder/Tools/dnscan/dnscan.py"
     cmd := exec.Command("bash", "-c", fmt.Sprintf("python3 %s -d %s -n >> .tmp/on_domain.txt", pwd_script, domain))
     cmd.Run()
 
