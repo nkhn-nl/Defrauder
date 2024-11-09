@@ -39,8 +39,9 @@ sudo apt-get install python3
 ### Clone the Repository
 
 ```
-git clone https://github.com/Yashhackz7721/Defrauder.git
-cd Defrauder
+git clone https://github.com/Yashhackz7721/defrauder.git
+cd defrauder
+chmod +x setup.sh
 sudo ./setup.sh
 ```
 
@@ -53,7 +54,7 @@ Ensure you have the necessary permissions to execute scripts, and `dnscan.py` is
 To run the tool, use the following command structure:
 
 ```
-Defrauder -d <domain> -o <output_file> -t <buffer_size>
+defrauder -d <domain> -o <output_file> -t <buffer_size>
 ```
 
 ### Flags:
@@ -66,7 +67,7 @@ Defrauder -d <domain> -o <output_file> -t <buffer_size>
 ### Example:
 
 ```
-Defrauder -d example.com -o results.txt -t 40
+defrauder -d example.com -o results.txt -t 40
 ```
 
 This command will generate domain variations for `example.com`, check which ones are live, and save the results to `results.txt`.
