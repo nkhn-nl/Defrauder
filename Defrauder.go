@@ -3,23 +3,10 @@ package main
 import (
 	"os"
 	"fmt"
-	"sync"
-	"time"
-	"bufio"
+	"regexp"
 	"os/exec"
-	"strings"
-	"unicode"
- 	"strconv"
+	"io/ioutil"
 )
-
-var wg sync.WaitGroup
-var limitChan chan struct{} 
-
-func initLimitChan(bufferSize int) {
-	
-	limitChan = make(chan struct{}, bufferSize)
-
-}
 
 func clearTerminal() {
 	
@@ -38,10 +25,10 @@ func banner() {
 	if err := cmd.Run(); err != nil {
 		fmt.Println("Error executing command:", err)
 	}
-	fmt.Println("[+] Generates domain variations by swapping characters ")
+
 	fmt.Println("[+] Running custom algorithm to alter characters at different positions. ")
 	fmt.Println("[+] Live Check: Verifies which generated domains are currently active. ")
-	fmt.Println("---------------------------------------------------------------------------")
+	fmt.Println("--------------------------------------------------------------------------")
 }
 
 func displayHelp() {
@@ -49,381 +36,253 @@ func displayHelp() {
     fmt.Println("\nFlags:")
     fmt.Println("  -d <domain>       Target domain to check for fakes.")
     fmt.Println("  -o <output_file>  Specify the output file for results.")
-    fmt.Println("  -t <buffer_size>  Set the buffer size for concurrent checks (default is 32).")
+    fmt.Println("  -t <buffer_size>  Set the buffer size for concurrent checks (default is 50).")
     fmt.Println("\nExample:")
-    fmt.Println(" Defrauder.go -d example.com -o results.txt -t 40")
+    fmt.Println(" Defrauder.go -d example.com -o results.txt -t 60")
 }
 
-func isDomainLive(domain string) {
-
-    var wg sync.WaitGroup
-	
-    wg.Add(1)
-    defer wg.Done()
-
-    var pwd_script string
-    pwd_script = "/home/harsh/Defrauder/Tools/dnscan/dnscan.py"
-    cmd := exec.Command("bash", "-c", fmt.Sprintf("python3 %s -d %s -n >> .tmp/on_domain.txt", pwd_script, domain))
-    cmd.Run()
-
-}
-
-func CreateTemporaryDirectory() {
-
-	if err := os.MkdirAll(".tmp", os.ModePerm); err != nil {
-		fmt.Println("Error creating directory:", err)
+func generateTmpFile() error {
+	// Create the .tmp directory if it doesn't exist
+	cmd := exec.Command("mkdir", "-p", ".tmp")
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("error creating .tmp directory: %v", err)
 	}
 
+	return nil
 }
 
-func Rm_extra(){
+// Function to remove the .tmp file using exec.Command()
+func removeTmpFile() error {
 
+	// Optionally, remove the .tmp directory if it's empty
 	cmd8 := exec.Command("bash", "-c", "rm -r .tmp")
 	cmd8.Run()
 
+	return nil
 }
 
-func alphabetMaker() {
+func runPythonScript(domain string) error {
+	pythonCode := `
+import itertools
 
-	cmd := exec.Command("bash", "-c", "mkdir -p .tmp")
-	cmd.Run()
 
-	file, err := os.Create(".tmp/letters_output.txt")
-	if err != nil {
-		fmt.Println("Error creating file:", err)
-		return
-	}
-	defer file.Close()
+def generate_variations(domain, char_variations, replace_count, output_file):
+    domain_chars = list(domain)
+    domain_length = len(domain_chars)
 
-	writer := bufio.NewWriter(file)
+    replace_positions_combinations = itertools.combinations(range(domain_length), replace_count)
 
-	for i := 0; i < 100000; i++ {
-		char := rune(i)
+    with open(output_file, 'w') as file:
+        for positions in replace_positions_combinations:
+            
+            replacement_options = []
+            for index, char in enumerate(domain_chars):
+                if index in positions:
+                    replacement_options.append(char_variations.get(char, [char]))
+                else:
+                    replacement_options.append([char])
 
-		if unicode.IsLetter(char) && unicode.Is(unicode.Latin, char) {
-			_, err := writer.WriteString(fmt.Sprintf("%c\n", char))
-			if err != nil {
-				fmt.Println("Error writing to file:", err)
-				return
-			}
-		}
-	}
+            for variation in itertools.product(*replacement_options):
+                file.write(''.join(variation) + '\n')
 
-	err = writer.Flush()
-	if err != nil {
-		fmt.Println("Error flushing data to file:", err)
-	}
-	cmd1 := exec.Command("bash", "-c", "sort -u .tmp/letters_output.txt -o .tmp/sorted_alp.txt")
-	cmd1.Run()
-	wg.Done() 
-
-}
-
-func request(domain string, idx int, wg *sync.WaitGroup) {
-
-    defer wg.Done()
-
-    fileName := ".tmp/sorted_alp.txt"
-    file, err := os.Open(fileName)
-    if err != nil {
-        fmt.Println("Error opening file:", err)
-        return
+if __name__ == "__main__":
+    
+    char_variations = {
+       'a': ['a','ａ','A','Ａ','ª','ᵃ','ₐ','ᴬ','á','Á','à','À','ă','Ă','ắ','Ắ','ằ','Ằ','ẵ','Ẵ','ẳ','Ẳ','â','Â','ấ','Ấ','ầ','Ầ','ẫ','Ẫ','ẩ','Ẩ','ǎ','Ǎ','å','Å','Å','ǻ','Ǻ','ä','ꞛ','Ä','Ꞛ','ǟ','Ǟ','ã','Ã','ȧ','Ȧ','ǡ','Ǡ','ą','Ą','ā','Ā','ả','Ả','ȁ','Ȁ','ȃ','Ȃ','ạ','Ạ','ặ','Ặ','ậ','Ậ','ḁ','Ḁ','ꜳ','Ꜳ','æ','Æ','ᴭ','ǽ','Ǽ','ǣ','Ǣ','ꜵ','Ꜵ','ꜷ','Ꜷ','ꜹ','Ꜹ','ꜻ','Ꜻ','ꜽ','Ꜽ','ẚ','ᴀ','ⱥ','Ⱥ','ᶏ','ᴁ','ᴂ','ᵆ','ꬱ','ɐ','Ɐ','ᵄ','ɑ','Ɑ','ᵅ','ꬰ','ᶐ','ɒ','Ɒ','ᶛ','ꭤ'],
+		'b': ['b','ｂ','B','Ｂ','ᵇ','ᴮ','ḃ','Ḃ','ḅ','Ḅ','ḇ','Ḇ','ʙ','ƀ','Ƀ','ᴯ','ᴃ','ᵬ','ꞗ','Ꞗ','ᶀ','ɓ','Ɓ','ƃ','Ƃ','ꞵ','Ꞵ'],
+		'c': ['c','ｃ','C','Ｃ','ᶜ','ć','Ć','ĉ','Ĉ','č','Č','ċ','Ċ','ç','Ç','ḉ','Ḉ','ᴄ','ȼ','Ȼ','ꞓ','Ꞓ','ꞔ','ƈ','Ƈ','ɕ','ᶝ','ↄ','Ↄ','ꜿ','Ꜿ'],
+		'd': ['d','ｄ','D','Ｄ','ᵈ','ᴰ','ď','Ď','ḋ','Ḋ','ḑ','Ḑ','đ','Đ','ḍ','Ḍ','ḓ','Ḓ','ḏ','Ḏ','ð','Ð','ᶞ','ꝺ','Ꝺ','ȸ','ǳ','ʣ','ǲ','Ǳ','ǆ','ǅ','Ǆ','ʥ','ʤ','ᴅ','ᴆ','ᵭ','ᶁ','ɖ','Ɖ','ɗ','Ɗ','ᶑ','ƌ','Ƌ','ȡ','ꝱ','ẟ'],
+		'e': ['e','ｅ','E','Ｅ','ᵉ','ₑ','ᴱ','é','É','è','È','ĕ','Ĕ','ê','Ê','ế','Ế','ề','Ề','ễ','Ễ','ể','Ể','ě','Ě','ë','Ë','ẽ','Ẽ','ė','Ė','ȩ','Ȩ','ḝ','Ḝ','ę','Ę','ē','Ē','ḗ','Ḗ','ḕ','Ḕ','ẻ','Ẻ','ȅ','Ȅ','ȇ','Ȇ','ẹ','Ẹ','ệ','Ệ','ḙ','Ḙ','ḛ','Ḛ','ᴇ','ꬲ','ꬳ','ɇ','Ɇ','ᶒ','ꬴ','ⱸ','ǝ','Ǝ','ᴲ','ⱻ','ə','Ə','ᵊ','ₔ','ᶕ','ɛ','Ɛ','ᵋ','ᶓ','ɘ','ɚ','ɜ','Ɜ','ᶟ','ᶔ','ᴈ','ᵌ','ɝ','ɞ','ʚ','ɤ'],
+		'f': ['f','ｆ','F','Ｆ','ᶠ','ḟ','Ḟ','ꝼ','Ꝼ','ﬀ','ﬃ','ﬄ','ﬁ','ﬂ','ʩ','ꜰ','ꬵ','ꞙ','Ꞙ','ᵮ','ᶂ','ƒ','Ƒ','ⅎ','Ⅎ','ꟻ'],
+		'g': ['g','ｇ','G','Ｇ','ᵍ','ᴳ','ǵ','Ǵ','ğ','Ğ','ĝ','Ĝ','ǧ','Ǧ','ġ','Ġ','ģ','Ģ','ḡ','Ḡ','ꞡ','Ꞡ','ᵹ','Ᵹ','ɡ','Ɡ','ᶢ','ꬶ','ɢ','ǥ','Ǥ','ᶃ','ɠ','Ɠ','ʛ','ᵷ','ꝿ','Ꝿ','ɣ','Ɣ','ˠ','ƣ','Ƣ'],
+		'h': ['h','ｈ','H','Ｈ','ʰ','ₕ','ᴴ','ĥ','Ĥ','ȟ','Ȟ','ḧ','Ḧ','ḣ','Ḣ','ḩ','Ḩ','ħ','Ħ','ꟸ','ḥ','Ḥ','ḫ','Ḫ','ẖ','ʜ','ƕ','Ƕ','ꞕ','ɦ','Ɦ','ʱ','ⱨ','Ⱨ','ⱶ','Ⱶ','ꜧ','Ꜧ','ꭜ','ɧ'],
+		'i': ['i','ｉ','I','Ｉ','ⁱ','ᵢ','ᴵ','í','Í','ì','Ì','ĭ','Ĭ','î','Î','ǐ','Ǐ','ï','Ï','ḯ','Ḯ','ĩ','Ĩ','İ','į','Į','ī','Ī','ỉ','Ỉ','ȉ','Ȉ','ȋ','Ȋ','ị','Ị','ḭ','Ḭ','ĳ','Ĳ','ı','ɪ','Ɪ','ᶦ','ꟾ','ꟷ','ᴉ','ᵎ','ɨ','Ɨ','ᶤ','ᵻ','ᶧ','ᶖ','ɩ','Ɩ'],
+		'j': ['ᶥ','ᵼ','j','ｊ','J','Ｊ','ʲ','ⱼ','ᴶ','ĵ','Ĵ','ǰ','ȷ','ᴊ','ɉ','Ɉ','ʝ','Ʝ','ᶨ','ɟ','ᶡ','ʄ'],
+		'k': ['k','ｋ','K','K','Ｋ','ᵏ','ₖ','ᴷ','ḱ','Ḱ','ǩ','Ǩ','ķ','Ķ','ꞣ','Ꞣ','ḳ','Ḳ','ḵ','Ḵ','ᴋ','ᶄ','ƙ','Ƙ','ⱪ','Ⱪ','ꝁ','Ꝁ','ꝃ','Ꝃ','ꝅ','Ꝅ','ʞ','Ʞ'],
+		'l': ['l','ｌ','L','Ｌ','ˡ','ₗ','ᴸ','ĺ','Ĺ','ľ','Ľ','ļ','Ļ','ł','Ł','ḷ','Ḷ','ḹ','Ḹ','ḽ','Ḽ','ḻ','Ḻ','ŀ','Ŀ','ǉ','ǈ','Ǉ','ỻ','Ỻ','ʪ','ʫ','ʟ','ᶫ','ꝇ','Ꝇ','ᴌ','ꝉ','Ꝉ','ƚ','Ƚ','ⱡ','Ⱡ','ɫ','Ɫ','ꭞ','ꬸ','ꬹ','ɬ','Ɬ','ꬷ','ꭝ','ᶅ','ᶪ','ɭ','ᶩ','ꞎ','ȴ','ꝲ','ɮ','ꞁ','Ꞁ'],
+		'm': ['m','ｍ','M','Ｍ','ᵐ','ₘ','ᴹ','ḿ','Ḿ','ṁ','Ṁ','ṃ','Ṃ','ᴍ','ᵯ','ᶆ','ɱ','Ɱ','ᶬ','ꬺ','ꟽ','ꟿ','ꝳ'],
+		'n': ['n','ｎ','N','Ｎ','ⁿ','ₙ','ᴺ','ń','Ń','ǹ','Ǹ','ň','Ň','ñ','Ñ','ṅ','Ṅ','ņ','Ņ','ꞥ','Ꞥ','ṇ','Ṇ','ṋ','Ṋ','ṉ','Ṉ','ǌ','ǋ','Ǌ','ɴ','ᶰ','ᴻ','ᴎ','ᵰ','ɲ','Ɲ','ᶮ','ƞ','Ƞ','ꞑ','Ꞑ','ᶇ','ɳ','ᶯ','ȵ','ꬻ','ꝴ','ŋ','Ŋ','ᵑ','ꬼ'],
+		'o': ['o','ｏ','O','Ｏ','º','ᵒ','ₒ','ᴼ','ó','Ó','ò','Ò','ŏ','Ŏ','ô','Ô','ố','Ố','ồ','Ồ','ỗ','Ỗ','ổ','Ổ','ǒ','Ǒ','ö','ꞝ','Ö','Ꞝ','ȫ','Ȫ','ő','Ő','õ','Õ','ṍ','Ṍ','ṏ','Ṏ','ȭ','Ȭ','ȯ','Ȯ','ȱ','Ȱ','ø','Ø','ǿ','Ǿ','ǫ','Ǫ','ǭ','Ǭ','ō','Ō','ṓ','Ṓ','ṑ','Ṑ','ỏ','Ỏ','ȍ','Ȍ','ȏ','Ȏ','ơ','Ơ','ớ','Ớ','ờ','Ờ','ỡ','Ỡ','ở','Ở','ợ','Ợ','ọ','Ọ','ộ','Ộ','œ','Œ','ꟹ','ꝏ','Ꝏ','ᴏ','ᴑ','ꬽ','ɶ','ᴔ','ꭁ','ꭂ','ꭀ','ꭃ','ꭄ','ᴓ','ꬾ','ɔ','Ɔ','ᵓ','ᴐ','ᴒ','ꬿ','ᶗ','ꭢ','ꝍ','Ꝍ','ᴖ','ᵔ','ᴗ','ᵕ','ⱺ','ɵ','Ɵ','ᶱ','ꝋ','Ꝋ','ɷ'],
+		'p': ['p','ｐ','P','Ｐ','ᵖ','ₚ','ᴾ','ṕ','Ṕ','ṗ','Ṗ','ᴘ','ᵽ','Ᵽ','ꝑ','Ꝑ','ᵱ','ᶈ','ƥ','Ƥ','ꝓ','Ꝓ','ꝕ','Ꝕ','ꟼ'],
+		'q': ['ⱷ','q','ｑ','Q','Ｑ','ȹ','ꝗ','Ꝗ','ꝙ','Ꝙ','ʠ','ɋ','Ɋ'],
+		'r': ['r','ｒ','R','Ｒ','ʳ','ᵣ','ᴿ','ŕ','Ŕ','ř','Ř','ṙ','Ṙ','ŗ','Ŗ','ꞧ','Ꞧ','ȑ','Ȑ','ȓ','Ȓ','ṛ','Ṛ','ṝ','Ṝ','ṟ','Ṟ','ꞃ','Ꞃ','ꭅ','ʀ','Ʀ','ꭆ','ꝛ','Ꝛ','ᴙ','ɍ','Ɍ','ᵲ','ɹ','ʴ','ᴚ','ɺ','ᶉ','ɻ','ʵ','ⱹ','ɼ','ɽ','Ɽ','ꭉ','ɾ','ᵳ','ɿ','ꭇ','ꭈ','ꭊ','ꭋ','ꭌ','ʁ','ʶ','ꝵ','ꝶ'],
+		's': ['s','ｓ','S','Ｓ','ˢ','ₛ','ś','Ś','ṥ','Ṥ','ŝ','Ŝ','š','Š','ṧ','Ṧ','ṡ','Ṡ','ş','Ş','ꞩ','Ꞩ','ṣ','Ṣ','ṩ','Ṩ','ș','Ș','ſ','ꞅ','Ꞅ','ẛ','ß','ẞ','ﬆ','ﬅ','ꜱ','ᵴ','ᶊ','ʂ','ᶳ','ȿ','Ȿ'],
+		't': ['t','ｔ','T','Ｔ','ᵗ','ₜ','ᵀ','ť','Ť','ẗ','ṫ','Ṫ','ţ','Ţ','ṭ','Ṭ','ț','Ț','ṱ','Ṱ','ṯ','Ṯ','ꞇ','Ꞇ','ʨ','ᵺ','ƾ','ʦ','ʧ','ꜩ','Ꜩ','ᴛ','ŧ','Ŧ','ⱦ','Ⱦ','ᵵ','ƫ','ᶵ','ƭ','Ƭ','ʈ','Ʈ','ȶ','ꝷ','ʇ','Ʇ'],
+		'u': ['ｕ','U','Ｕ','ᵘ','ᵤ','ᵁ','ú','Ú','ù','Ù','ŭ','Ŭ','û','Û','ǔ','Ǔ','ů','Ů','ü','ꞟ','Ü','Ꞟ','ǘ','Ǘ','ǜ','Ǜ','ǚ','Ǚ','ǖ','Ǖ','ű','Ű','ũ','Ũ','ṹ','Ṹ','ų','Ų','ū','Ū','ṻ','Ṻ','ủ','Ủ','ȕ','Ȕ','ȗ','Ȗ','ư','Ư','ứ','Ứ','ừ','Ừ','ữ','Ữ','ử','Ử','ự','Ự','ụ','Ụ','ṳ','Ṳ','ṷ','Ṷ','ṵ','Ṵ','ᴜ','ᶸ','ꭎ','ᴝ','ᵙ','ᴞ','ᵫ','ꭐ','ꭑ','ʉ','Ʉ','ᶶ','ꭏ','ᵾ','ᶙ','ꭒ','ꭟ','ɥ','Ɥ','ᶣ','ʮ','ʯ','ʊ','Ʊ','ᶷ','ᵿ'],
+		'v': ['v','ｖ','V','Ｖ','ᵛ','ᵥ','ⱽ','ṽ','Ṽ','ṿ','Ṿ','ꝡ','Ꝡ','ᴠ','ꝟ','Ꝟ','ᶌ','ʋ','Ʋ','ᶹ','ⱱ','ⱴ','ỽ','Ỽ','ʌ','Ʌ','ᶺ'],
+		'w': ['w','ｗ','W','Ｗ','ʷ','ᵂ','ẃ','Ẃ','ẁ','Ẁ','ŵ','Ŵ','ẘ','ẅ','Ẅ','ẇ','Ẇ','ẉ','Ẉ','ᴡ','ⱳ','Ⱳ','ʍ'],
+		'x': ['x','ｘ','X','Ｘ','ˣ','ₓ','ẍ','Ẍ','ẋ','Ẋ','ᶍ','ꭖ','ꭗ','ꭘ','ꭙ','ꭓ','Ꭓ','ꭔ','ꭕ'],
+		'y': ['y','ｙ','Y','Ｙ','ʸ','ý','Ý','ỳ','Ỳ','ŷ','Ŷ','ẙ','ÿ','Ÿ','ỹ','Ỹ','ẏ','Ẏ','ȳ','Ȳ','ỷ','Ỷ','ỵ','Ỵ','ʏ','ɏ','Ɏ','ƴ','Ƴ','ỿ','Ỿ','ꭚ'],
+		'z': ['z','ｚ','Z','Ｚ','ᶻ','ź','Ź','ẑ','Ẑ','ž','Ž','ż','Ż','ẓ','Ẓ','ẕ','Ẕ','ƍ','ᴢ','ƶ','Ƶ','ᵶ','ᶎ','ȥ','Ȥ','ʐ','ᶼ','ʑ','ᶽ','ɀ','Ɀ','ⱬ','Ⱬ']
     }
-    defer file.Close()
+    	
+def process_domain(domain):
+    # Separate the TLD
+    if '.' in domain:
+        name, tld = domain.rsplit('.', 1)  # Split from the last dot
+        return name,tld
+    else:
+        return 
 
-    var alphabetArr []string
-    scanner := bufio.NewScanner(file)
-    for scanner.Scan() {
-        alphabetArr = append(alphabetArr, scanner.Text())
-    }
-
-    if err := scanner.Err(); err != nil {
-        fmt.Println("Error reading file:", err)
-        return
-    }
-
-    outputFile1 := ".tmp/domain_list.txt"
-    file, err = os.OpenFile(outputFile1, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-    if err != nil {
-        fmt.Println("Error creating file:", err)
-        return
-    }
-    defer file.Close()
-
-    writer := bufio.NewWriter(file)
-    for _, char := range alphabetArr {
-        newDomain := domain[:idx] + char + domain[idx+1:]
+def append_tld_to_file(input_file, tld, output_file):
+    try:
+        with open(input_file, "r") as infile, open(output_file, "w") as outfile:
+            for line in infile:
+                line = line.strip()  
+                if line:  
+                    outfile.write(f"{line}.{tld}\n")
+    except FileNotFoundError:
+        print(f"Error: {input_file} not found.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
         
+domain = "`+domain+`".strip().lower()	
+name,tld=process_domain(domain)
 
-        writer.WriteString(newDomain + "\n")
-    }
-    writer.Flush() 
+if len(name) >= 6:
+    replace_count = 3
+elif 3 < len(name) <= 6:
+    replace_count = 2
+else:
+    replace_count = 1
+output_file = ".tmp/var.txt"
+output_file2 = ".tmp/var2.txt"
 
-}
+generate_variations(name, char_variations, replace_count, output_file)
+append_tld_to_file(output_file,tld,output_file2)
+	`
 
-func splitDomain(domain string,base string, ext string) {
+	tempFile, err := os.CreateTemp("", "*.py")
+	if err != nil {
+		return fmt.Errorf("error creating temp file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
 
-    var wg sync.WaitGroup
-
-   
-    domainLength := len(base) 
-
-    for i := 0; i < domainLength; i++ {
-        wg.Add(1)
-        go request(domain, i, &wg)
-    }
-
-    wg.Wait() 
-    
-}
-
-func GenerateVariations(baseWord string) []string {
-
-	variations := map[rune][]string{
-		'f': {"f", "fa", "fc", "ff"},
-		'a': {"a", "aa", "ae", "o", "4", "@"},
-		'c': {"c", "cc", "ck"},
-		'e': {"e", "ee", "3"},
-		'b': {"b", "bb", "p", "d", "9"},
-		'o': {"o", "0", "oo"},
-		'k': {"k", "kk", "q", "ck"},
-		'd': {"d", "dd"},
-		'g': {"g", "9"},
-		'h': {"h", "4", "hh"},
-		'i': {"i", "1", "l", "!", "|"},
-		'l': {"l", "1", "|", "i"},
-		'm': {"m", "nn", "n"},
-		'n': {"n", "nn"},
-		'p': {"p", "pp", "9"},
-		'r': {"r", "rr"},
-		's': {"s", "ss", "5", "$"},
-		't': {"t", "tt", "7"},
-		'u': {"u", "v", "ù"},
-		'y': {"y", "ÿ"},
+	_, err = tempFile.WriteString(pythonCode)
+	if err != nil {
+		return fmt.Errorf("error writing to temp file: %w", err)
 	}
 
-	var splitWord [][]string
-	for _, char := range baseWord {
-		if v, found := variations[char]; found {
-			splitWord = append(splitWord, v)
-		} else {
-			splitWord = append(splitWord, []string{string(char)})
-		}
+	cmd := exec.Command("python3", tempFile.Name())
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error executing Python code: %w\nOutput: %s", err, output)
 	}
 
-	var results []string
-	combine(splitWord, "", &results)
-	return results
+	return nil
+}
+func count(){
+
+	err := os.Remove(".tmp/var.txt")
+	if err != nil {
+		fmt.Printf("Error deleting .tmp/var.txt: %v\n", err)
+	}
+
+	cmd1 := exec.Command("bash", "-c", "cat .tmp/var2.txt | wc -l")
+	output, err := cmd1.CombinedOutput()
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+	} else {
+		fmt.Printf("[-] Total number of domain generated:\033[33m %s\033[0m", string(output))
+	}
+
 }
 
-func combine(chars [][]string, current string, results *[]string) {
-	if len(chars) == 0 {
-		*results = append(*results, current)
+func check_live(threads string) {
+	
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("cat .tmp/var2.txt | httpx -fc 301,400,401,403,404,405,408,410,413,414,429,451,500,501,502,503,504,511,444,499 -sc -silent -threads %s -o .tmp/on_data.txt", threads))
+	
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+	if err != nil {
+		
+		os.Stderr.WriteString(err.Error())
+	}
+}
+
+func removeColorCodes(content string) string {
+	
+	re := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return re.ReplaceAllString(content, "")
+
+}
+
+func move_output_file(file string) {
+	
+	content, err := ioutil.ReadFile(".tmp/on_data.txt")
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
 		return
 	}
-	for _, char := range chars[0] {
-		combine(chars[1:], current+char, results)
+
+	
+	cleanedContent := removeColorCodes(string(content))
+
+	
+	err = ioutil.WriteFile(".tmp/on_data.txt", []byte(cleanedContent), 0644)
+	if err != nil {
+		fmt.Printf("Error writing cleaned content to file: %v\n", err)
+		return
 	}
-}
 
-func method2(SLD string, TLD string) {
-    wordlist := GenerateVariations(SLD)
-
-    outputFile := ".tmp/fake_domain_wordlist.txt"
-    file, err := os.Create(outputFile)
-    if err != nil {
-        fmt.Println("Error creating file:", err)
-        return
-    }
-    defer file.Close()
-
-    writer := bufio.NewWriter(file)
-    for _, word := range wordlist {
-        tmp := word + "." + TLD
-        writer.WriteString(tmp + "\n")
-    }
-    writer.Flush()
-}
-
-func check_live(stopChan chan struct{}){
-    
-		var innerWg sync.WaitGroup
 	
-		cmd:=exec.Command("bash","-c","cat .tmp/domain_list.txt .tmp/fake_domain_wordlist.txt > .tmp/combined.txt ")
-		cmd.Run()
+	cmd := exec.Command("mv", ".tmp/on_data.txt", file)
 
-		file, err := os.Open(".tmp/combined.txt")
-		if err != nil {
-			fmt.Printf("failed to open file: %s", err)
-		}
-		defer file.Close()
 	
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			line := scanner.Text()
-			innerWg.Add(1)
-			go func(d string) {
-				defer innerWg.Done()
-				
-				limitChan <- struct{}{} // Acquire a spot
-				isDomainLive(d)
-				<-limitChan // Release the spot
-			}(line)
-
-		}
-		innerWg.Wait() 
-	
-		if err := scanner.Err(); err != nil {
-			fmt.Printf("error reading file: %s", err)
-		}
-		close(stopChan)
-}
-func showData(stopChan <-chan struct{}) {
+	err = cmd.Run()
+	if err != nil {
 		
-	for {
-		select {
-		case <-stopChan:
-			fmt.Println("Stopping data display...")
-			return
-		default:
-			
-			clearTerminal()
-			banner()
-		  
-	        cmd0 := exec.Command("bash", "-c", `cat .tmp/on_domain.txt | sed 's/\x1b\[K//g' | grep -E "([0-9]{1,3}\.){3}[0-9]{1,3} - ([a-zA-Z0-9_-]+\.)+[a-zA-Z]{2,}" | sort -u -o .tmp/sorted_output_data.txt`)
-	        cmd0.Run()
-			
-			output, err := os.ReadFile(".tmp/sorted_output_data.txt")
-			if err != nil {
-				fmt.Println("Error reading file:", err)
-				return
-			}
-				
-			outputLines := strings.Split(string(output), "\n")
-				
-			for _, line := range outputLines {
-				if line != "" {
-					fmt.Println(line)
-				}
-			}
-				
-			time.Sleep(5 * time.Second)
-		}
+		fmt.Printf("Error moving file: %v\n", err)
+	} else {
+		fmt.Printf("File moved successfully to: %s\n", file)
 	}
 }
-
-func main() {
-    var domain, bs, outputFileName string
-    var bufferSize int = 32 // default buffer size
-    var mainWg sync.WaitGroup
-    stopChan := make(chan struct{})
-    
-    Rm_extra()
-    CreateTemporaryDirectory()
-    
-    
-    flagString := os.Args[1:]
+func main(){
+	var domain ,output  string
+	var threads string
+	threads = "50"
+	output="defrauder_result.txt"
+	flagString := os.Args[1:]
     if len(flagString) < 2 {
-        fmt.Println("ENTER THE CORRECT COMMAND...")
-        displayHelp()
+		fmt.Println("ENTER THE CORRECT COMMAND...")
         return
     }
-    
-    for i := 0; i < len(flagString); i++ {
-        switch flagString[i] {
-        case "-d":
-            if i+1 < len(flagString) {
-                domain = flagString[i+1]
-                i++
-            }
-        case "-o":
-            if i+1 < len(flagString) {
-                outputFileName = flagString[i+1]
-                i++
-            }
-        case "-t":
-            if i+1 < len(flagString) {
-                bs = flagString[i+1]
-                var err error
-                bufferSize, err = strconv.Atoi(bs)
-                if err != nil {
-                    fmt.Println("Invalid buffer size; using default value 32")
-                    bufferSize = 32
-                }
-                i++
-            }
-        case "-h":
-            displayHelp()
-            return
-        }
-    }
+	banner()
 
-    
-    if domain == "" {
-        fmt.Println("Error: Domain is required")
-        displayHelp()
-        return
-    }
+	for i:=0;i<len(flagString);i++{
+		switch flagString[i]{
+		case "-d":
+			if i+1 < len(flagString) {
+				domain = flagString[i+1]
+			}
+		case "-o":
+			if i+1 < len(flagString) {
+				output = flagString[i+1]
+			}
+		case "-t":
+			if i+1 < len(flagString) {
+				threads = flagString[i+1]
+			}
+		case "-h":
+		 	displayHelp() 
+		 	return
+		}
+		
+	}
+	generateTmpFile()
+	fmt.Printf("\n[-] Generation varation of the Doamin :\033[92m %s\033[0m\n", domain)
+	runPythonScript(domain)
 
-    
-    initLimitChan(bufferSize)
-    
-    mainWg.Add(1)
-    go func() {
-        defer mainWg.Done()
-        defer func() {
-            if r := recover(); r != nil {
-                // fmt.Printf("Recovered from panic in alphabetMaker: %v\n", r)
-            }
-        }()
-        alphabetMaker()
-    }()
-    mainWg.Wait()
-    go showData(stopChan)
-    tldSize := -1
-    for i := 0; i < len(domain); i++ {
-        if domain[i] == '.' {
-            tldSize = i
-            break
-        }
-    }
-    
-    if tldSize == -1 {
-        fmt.Println("Error: Invalid domain format. Domain must contain a TLD (e.g., example.com)")
-        return
-    }
-        parts := strings.SplitN(domain, ".", 2)
-        if len(parts) == 2 {
-            base := parts[0]
-            ext := parts[1]
+	count()
+	fmt.Printf("[-] Output will be saved at : %s \n",output)
 
-            // - MET 1 -
-            splitDomain(domain, base, ext)
-            // - MET 2 -
-            method2(base, ext)
-            check_live(stopChan)
+	fmt.Printf("\033[36m [-] CHECKING FOR LIVE DOMAIN. \033[0m\n")
+	check_live(threads)
 
+	move_output_file(output)
+	removeTmpFile()
 
-        } else {
-            fmt.Println("Error: Invalid domain format. Domain must contain a TLD (e.g., example.com)")
-            return
-    	}
-
-    // Handle output file if specified
-    if outputFileName != "" {
-        err := func() error {
-            cmd := exec.Command("bash", "-c", fmt.Sprintf(`cat .tmp/on_domain.txt | sed 's/\x1b\[K//g' | grep -E "([0-9]{1,3}\.){3}[0-9]{1,3} - ([a-zA-Z0-9_-]+\.)+[a-zA-Z]{2,}" > %s`, outputFileName))
-            if err := cmd.Run(); err != nil {
-                return fmt.Errorf("error saving results: %v", err)
-            }
-            fmt.Printf("Results saved to %s\n", outputFileName)
-            return nil
-        }()
-
-        if err != nil {
-            fmt.Println(err)
-        }
-    }
-
-    fmt.Println("\nDomain processing completed successfully!")
 }
