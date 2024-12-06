@@ -53,7 +53,7 @@ Ensure you have the necessary permissions to execute scripts, and `httpx` is cor
 To run the tool, use the following command structure:
 
 ```
-defrauder -d <domain> -o <output_file> -t <buffer_size>
+defrauder -d <domain> -o <output_file> -t <buffer_size> -fc 302,301
 ```
 
 ### Flags:
@@ -61,6 +61,7 @@ defrauder -d <domain> -o <output_file> -t <buffer_size>
 - `-d <domain>`: The target domain to check for fake domains.
 - `-o <output_file>`: Specify the output file for saving results (optional).
 - `-t <buffer_size>`: Set the buffer size for concurrent domain checks (optional, default is 32).
+- `-fc <filter status>`: filter response with specified status code (-fc 403,401)
 - `-h`: Displays help for usage.
 
 ### Example:
