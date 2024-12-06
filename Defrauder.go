@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"os/exec"
+	"strings"
 	"io/ioutil"
 )
 
@@ -34,11 +35,12 @@ func banner() {
 func displayHelp() {
     fmt.Println("Usage:  Defrauder.go -d <domain> -o <output_file> -t <buffer_size>")
     fmt.Println("\nFlags:")
-    fmt.Println("  -d <domain>       Target domain to check for fakes.")
-    fmt.Println("  -o <output_file>  Specify the output file for results.")
-    fmt.Println("  -t <buffer_size>  Set the buffer size for concurrent checks (default is 50).")
+    fmt.Println("  -d  <domain>       Target domain to check for fakes.")
+    fmt.Println("  -o  <output file>  Specify the output file for results.")
+    fmt.Println("  -t  <buffer size>  Set the buffer size for concurrent checks (default is 50).")
+    fmt.Println("  -fc <filter status>  filter response with specified status code (-fc 403,401)")
     fmt.Println("\nExample:")
-    fmt.Println(" Defrauder.go -d example.com -o results.txt -t 60")
+    fmt.Println(" Defrauder.go -d example.com -o results.txt -t 60 -fc 403,401")
 }
 
 func generateTmpFile() error {
@@ -189,16 +191,19 @@ func count(){
 
 }
 
-func check_live(threads string) {
+
+func check_live_with_filter(threads string, filterStatusCodes []string) {
 	
-	cmd := exec.Command("bash", "-c", fmt.Sprintf("cat .tmp/var2.txt | httpx -fc 301,400,401,403,404,405,408,410,413,414,429,451,500,501,502,503,504,511,444,499 -sc -silent -threads %s -o .tmp/on_data.txt", threads))
+	filterArg := strings.Join(filterStatusCodes, ",")
+
 	
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("cat .tmp/var2.txt | httpx -fc %s -sc -silent -threads %s -o .tmp/on_data.txt", filterArg, threads))
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	err := cmd.Run()
 	if err != nil {
-		
 		os.Stderr.WriteString(err.Error())
 	}
 }
@@ -240,20 +245,34 @@ func move_output_file(file string) {
 		fmt.Printf("File moved successfully to: %s\n", file)
 	}
 }
-func main(){
-	var domain ,output  string
+
+func main() {
+	var domain, output string
 	var threads string
 	threads = "50"
-	output="defrauder_result.txt"
+	output = "defrauder_result.txt"
+
+	filterStatusCodes := []string{
+		"301", "400", "401", "403", "404", "405", "408", "410",
+		"413", "414", "429", "451", "500", "501", "502", "503",
+		"504", "511", "444", "499",
+	}
+
 	flagString := os.Args[1:]
-    if len(flagString) < 2 {
+	if len(flagString) == 1 && flagString[0] == "-h" {
+		displayHelp()
+		return
+	}
+
+	if len(flagString) < 2 {
 		fmt.Println("ENTER THE CORRECT COMMAND...")
-        return
-    }
+		return
+	}
+
 	banner()
 
-	for i:=0;i<len(flagString);i++{
-		switch flagString[i]{
+	for i := 0; i < len(flagString); i++ {
+		switch flagString[i] {
 		case "-d":
 			if i+1 < len(flagString) {
 				domain = flagString[i+1]
@@ -266,23 +285,27 @@ func main(){
 			if i+1 < len(flagString) {
 				threads = flagString[i+1]
 			}
+		case "-fc":
+			if i+1 < len(flagString) {
+				userCodes := strings.Split(flagString[i+1], ",")
+				filterStatusCodes = append(filterStatusCodes, userCodes...)
+			}
 		case "-h":
-		 	displayHelp() 
-		 	return
+			displayHelp()
+			return
 		}
-		
 	}
+
 	generateTmpFile()
-	fmt.Printf("\n[-] Generation varation of the Doamin :\033[92m %s\033[0m\n", domain)
+	fmt.Printf("\n[-] Generating variations of the Domain: \033[92m%s\033[0m\n", domain)
 	runPythonScript(domain)
 
 	count()
-	fmt.Printf("[-] Output will be saved at : %s \n",output)
+	fmt.Printf("[-] Output will be saved at: %s\n", output)
 
-	fmt.Printf("\033[36m [-] CHECKING FOR LIVE DOMAIN. \033[0m\n")
-	check_live(threads)
+	fmt.Printf("\033[36m[-] CHECKING FOR LIVE DOMAIN.\033[0m\n")
+	check_live_with_filter(threads, filterStatusCodes)
 
 	move_output_file(output)
 	removeTmpFile()
-
 }
