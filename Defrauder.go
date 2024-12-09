@@ -288,7 +288,8 @@ func main() {
 		case "-fc":
 			if i+1 < len(flagString) {
 				userCodes := strings.Split(flagString[i+1], ",")
-				filterStatusCodes = append(filterStatusCodes, userCodes...)
+				validCodes := filterValidStatusCodes(userCodes)
+				filterStatusCodes = append(filterStatusCodes, validCodes...)
 			}
 		case "-h":
 			displayHelp()
@@ -308,4 +309,17 @@ func main() {
 
 	move_output_file(output)
 	removeTmpFile()
+}
+
+func filterValidStatusCodes(codes []string) []string {
+	var validCodes []string
+	regex := regexp.MustCompile(`^\d{3}$`)
+	for _, code := range codes {
+		if regex.MatchString(code) {
+			validCodes = append(validCodes, code)
+		} else {
+			fmt.Printf("[-] Invalid status code ignored: %s\n", code)
+		}
+	}
+	return validCodes
 }
