@@ -247,6 +247,9 @@ func move_output_file(file string) {
 }
 
 func main() {
+        var Reset = "\033[0m"
+        var Red = "\033[31m"
+
 	var domain, output string
 	var threads string
 	threads = "50"
@@ -265,7 +268,8 @@ func main() {
 	}
 
 	if len(flagString) < 2 {
-		fmt.Println("ENTER THE CORRECT COMMAND...")
+		fmt.Println(Red + "Fault: not enough parameters" + Reset + "\n")
+		displayHelp()
 		return
 	}
 
